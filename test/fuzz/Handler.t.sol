@@ -18,7 +18,7 @@ contract Handler is Test {
     ERC20Mock wEth;
     ERC20Mock wBtc;
 
-    uint256 public constant MAX_DEPOSIT_SIZE = type(uint96).max; // the max uint96 value
+    uint96 public constant MAX_DEPOSIT_SIZE = type(uint96).max; // the max uint96 value
 
     constructor(DSCEngine _dscEngine, DecentralisedStableCoin _dsc) {
         dsce = _dscEngine;
@@ -32,14 +32,26 @@ contract Handler is Test {
     function depositCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
         ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
         amountCollateral = bound(amountCollateral, 1, MAX_DEPOSIT_SIZE);
-        console.log("amountCollateral", amountCollateral);
+        // console.log("amountCollateral", amountCollateral);
 
-        vm.prank(msg.sender);
+        vm.startPrank(msg.sender);
         collateral.mint(msg.sender, amountCollateral);
-        collateral.approve(address(dsce), amountCollateral);
-        // collateral.approveInternal(msg.sender, address(dsce), amountCollateral);
+        collateral.approve(address(dsce), amountCollateral); // this one is from openzeppelin 4.9.1
+        // collateral.approveInternal(msg.sender, address(dsce), amountCollateral); // from my own mock which is the same as Patricks, openzeppelin 4.8.3
         dsce.depositCollateral(address(collateral), amountCollateral);
         vm.stopPrank();
+    }
+
+    function redeemCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
+        ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
+
+        uint256 maxCollateralToRedeem = dsce.getCollateralBalanceOfUser(msg.sender, address(collateral));
+        amountCollateral = bound(amountCollateral, 0, maxCollateralToRedeem);
+        if (amountCollateral == 0) {
+            return;
+        }
+
+        dsce.redeemCollateral(address(collateral), amountCollateral);
     }
 
     function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock) {
