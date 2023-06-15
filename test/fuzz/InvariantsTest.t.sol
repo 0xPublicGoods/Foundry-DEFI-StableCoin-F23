@@ -51,4 +51,10 @@ contract InvariantsTest is StdInvariant, Test {
 
         assert(wethValue + wbtcValue >= totalSupply);
     }
+
+    function invariant_gettersShouldNotRevert() public view {
+        dsce.getAccountCollateralValue(msg.sender);
+        // and others
+        // see course here: https://youtu.be/wUjYK5gwNZs?t=15732
+    }
 }

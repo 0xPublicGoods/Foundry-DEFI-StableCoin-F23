@@ -10,6 +10,7 @@ import {DSCEngine} from "../../src/DSCEngine.sol";
 import {DecentralisedStableCoin} from "../../src/DecentralisedStableCoin.sol";
 //import {ERC20Mock} from "../mocks/ERC20Mock.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
+import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
 
 contract Handler is Test {
     DSCEngine dsce;
@@ -19,6 +20,8 @@ contract Handler is Test {
     ERC20Mock wBtc;
 
     uint256 public timesMintIsCalled = 0;
+    address[] public usersWithCollateralDeposited;
+    MockV3Aggregator public ethUsdPriceFeed;
 
     uint256 public constant MAX_DEPOSIT_SIZE = type(uint96).max; // the max uint96 value
 
@@ -29,12 +32,21 @@ contract Handler is Test {
         address[] memory collateralAddresses = dsce.getCollateralTokens();
         wEth = ERC20Mock(collateralAddresses[0]);
         wBtc = ERC20Mock(collateralAddresses[1]);
+
+        // set up price feeds
+        ethUsdPriceFeed = MockV3Aggregator(dsce.getCollateralTokenPriceFeed(address(wEth)));
     }
 
-    function mintDsc(uint256 amount) public {
-        (uint256 totalDscMinted, uint256 collateralValueInUsd) = dsce.getAccountInformation(msg.sender);
+    function mintDsc(uint256 amount, uint256 addressSeed) public {
+        if (usersWithCollateralDeposited.length == 0) {
+            return;
+        }
 
+        address sender = usersWithCollateralDeposited[addressSeed % usersWithCollateralDeposited.length];
+
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = dsce.getAccountInformation(sender);
         int256 maxDscToMint = (int256(collateralValueInUsd) / 2) - int256(totalDscMinted);
+
         if (maxDscToMint < 0) {
             return;
         }
@@ -45,7 +57,7 @@ contract Handler is Test {
             return;
         }
 
-        vm.startPrank(msg.sender);
+        vm.startPrank(sender);
         dsce.mintDsc(amount);
         vm.stopPrank();
         timesMintIsCalled++;
@@ -62,6 +74,7 @@ contract Handler is Test {
         // collateral.approveInternal(msg.sender, address(dsce), amountCollateral); // from my own mock which is the same as Patricks, openzeppelin 4.8.3
         dsce.depositCollateral(address(collateral), amountCollateral);
         vm.stopPrank();
+        usersWithCollateralDeposited.push(msg.sender);
     }
 
     function redeemCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
@@ -76,6 +89,13 @@ contract Handler is Test {
         dsce.redeemCollateral(address(collateral), amountCollateral);
     }
 
+    // this breaks out invariant test suite!! it is a known risk issue and we must mitigate
+    // function updateCollateralPrice(uint96 newPrice) public {
+    //     int256 newPriceInt = int256(uint256(newPrice));
+    //     ethUsdPriceFeed.updateAnswer(newPriceInt);
+    // }
+
+    // Helper functions
     function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock) {
         if (collateralSeed % 2 == 0) {
             return wEth;
